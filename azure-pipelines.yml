@@ -1,0 +1,83 @@
+# ASP.NET
+# Build and test ASP.NET projects.
+# Add steps that publish symbols, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/apps/aspnet/build-aspnet-4
+
+trigger: none
+#- master
+
+resources:
+- repo: self
+
+variables:
+- name: buildConfiguration
+  value: release
+- group:
+stages:
+- stage: build
+  jobs:
+  - job: build
+    displayName: Build-webapp 
+    pool: 
+       vmImage: windows-latest
+    steps:
+    - task: UseDotNet@2
+      displayName: Download sdk 8.x
+      inputs:
+        version: '8.x'
+        includePreviewVersions: true # Required for preview versions
+    - task: DotNetCoreCLI@2
+      displayName: Build
+      inputs:
+        command: build
+        projects: '**/*.csproj'
+        arguments: '--configuration $(buildConfiguration)'
+    - task: DotNetCoreCLI@2
+      displayName: publish
+      inputs:
+        command: publish
+        publishWebProjects: True
+        arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
+        zipAfterPublish: false
+
+    # # publish an artifact called drop
+    - publish: '$(Build.ArtifactStagingDirectory)'
+      artifact: drop
+##########################################      
+#### DEPLOY TO DEV
+##########################################
+- stage: 'Dev'
+  displayName: 'Deploy to the dev environment'
+  dependsOn: Build
+  condition:  succeeded()
+  jobs:
+  - deployment: Deploy
+    pool:  
+      vmImage: windows-latest     
+    environment: dev
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+         
+          # - task: AzureWebApp@1
+          #   inputs:
+          #     azureSubscription: 'Pay-As-You-Go(db328458-07c9-4b02-9995-71f659376922)'
+          #     appType: 'webApp'
+          #     appName: '$(webapp)'
+          #     package: '$(System.DefaultWorkingDirectory)/drop/*.zip'
+          #     deploymentMethod: 'auto'
+                   
+          - task: AzureWebApp@1
+            displayName: 'Azure App Service Deploy: website'
+            inputs:
+              azureSubscription: '$(Serviceconnection)'
+              appType: 'webApp'
+              appName: '$(WebappName)'
+              package: '$(Pipeline.Workspace)/drop/*.zip'
+           
+
+
+        
